@@ -6,33 +6,45 @@ from simulation.car import Car
 from decision_system.system import DecisionSystem
 
 class GridSimulation:
-    def __init__(self, background_path="./fotos/background.png", car_image_path="./fotos/car.png", mask_path="./fotos/mask_corrected.npy",
-                 scale_factor=10, fps=10, car_spawn_probability=0.3, max_new_cars=3, min_parking_time=100):
+    def __init__(self, background_path="./fotos/background.png", car_image_path="./fotos/car.png", 
+                 mask_path="./fotos/mask_corrected.npy", scale_factor=10, fps=10, car_spawn_probability=0.3, max_new_cars=3, min_parking_time=100):
         """
-        Initializes the simulation using a Decision System and Parking Mask.
+        Initializes the simulation using a Decision System for parking.
+        
+        :param background_path: Path to the background image.
+        :param car_image_path: Path to the car image.
+        :param mask_path: Path to the mask file.
+        :param scale_factor: Factor to resize the grid (higher = bigger cars).
+        :param fps: Frames per second (controls simulation speed).
+        :param car_spawn_probability: Probability of new cars appearing per frame.
+        :param max_new_cars: Maximum number of cars that can arrive in a single frame.
+        :param min_parking_time: Minimum time a car stays before considering leaving.
         """
         # Initialize pygame
         pygame.init()
+        
         pygame.display.set_mode((1, 1))  # Small temporary display mode
 
         # Load images
         self.background = pygame.image.load(background_path).convert_alpha()
         self.car_image_original = pygame.image.load(car_image_path).convert_alpha()
-        self.scale_factor = scale_factor  # Defines grid cell size
-        self.width, self.height = self.background.get_size()
-        self.car_image = self.scale_car_image(self.car_image_original, self.scale_factor)
 
-        # Set the actual window size
+        # Load and process mask
+        self.mask = np.load(mask_path, allow_pickle=False)
+        self.mask = cv2.resize(self.mask, (self.background.get_width() // scale_factor, self.background.get_height() // scale_factor), interpolation=cv2.INTER_NEAREST)
+
+        # Set up screen size
+        self.width, self.height = self.background.get_size()
+        self.scale_factor = scale_factor
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Pygame Car Simulation")
 
-        # Grid size in cells, not pixels
+        # Resize car image while maintaining aspect ratio
+        self.car_image = self.scale_car_image(self.car_image_original, self.scale_factor)
+
+        # Grid size in cells
         self.grid_width = self.width // self.scale_factor
         self.grid_height = self.height // self.scale_factor
-
-        # Load and resize the parking mask
-        self.mask = np.load(mask_path, allow_pickle=False)
-        self.mask = cv2.resize(self.mask, (self.grid_width, self.grid_height), interpolation=cv2.INTER_NEAREST)
 
         # FPS and simulation parameters
         self.fps = fps
@@ -41,7 +53,7 @@ class GridSimulation:
         self.max_new_cars = max_new_cars
         self.min_parking_time = min_parking_time
 
-        # Define fixed destinations on the grid borders
+        # Destinations on the grid
         self.destinations = {
             "TOP": (self.grid_width // 2, 0),
             "LEFT": (0, self.grid_height // 2),
@@ -52,10 +64,9 @@ class GridSimulation:
         # Decision system
         self.decision_system = DecisionSystem(weight_destination=0.7, weight_spacing=0.3)
 
-        # List of parked cars
+        # Parking state
         self.cars = []
         self.occupied_spaces = set()
-        self.spawn_initial_cars()
 
     def scale_car_image(self, image, max_size):
         """Resizes the car image while keeping its original aspect ratio."""
@@ -71,48 +82,47 @@ class GridSimulation:
 
         return pygame.transform.smoothscale(image, (new_width, new_height))
 
-    def find_closest_parking_spot(self, destination):
-        """Finds the closest free parking spot to the given destination based on the mask."""
-        min_distance = float("inf")
-        best_spot = None
+    def get_available_spots(self):
+        """Returns a list of all free parking spots."""
+        return [(x, y) for x in range(self.grid_width)
+                        for y in range(self.grid_height)
+                        if (x, y) not in self.occupied_spaces and self.mask[y, x] == 1]
 
-        for x in range(self.grid_width):
-            for y in range(self.grid_height):
-                if self.mask[y, x] == 1 and (x, y) not in self.occupied_spaces:
-                    distance = abs(x - destination[0]) + abs(y - destination[1])
-                    if distance < min_distance:
-                        min_distance = distance
-                        best_spot = (x, y)
-        
-        return best_spot
+    def spawn_new_cars(self):
+        """Attempts to spawn multiple new cars based on probability."""
+        if random.random() < self.car_spawn_probability:  # Probability check
+            num_cars = random.randint(1, self.max_new_cars)  # Random number of cars arriving
+            for _ in range(num_cars):
+                destination_name, destination_coords = random.choice(list(self.destinations.items()))
+                available_spots = self.get_available_spots()
+                best_spot = self.decision_system.choose_best_spot(available_spots, destination_coords, self.occupied_spaces)
 
-    def spawn_initial_cars(self):
-        """Spawn initial set of cars in the parking lot area based on the mask."""
-        for destination_name, destination_coords in self.destinations.items():
-            for _ in range(4):
-                spot = self.find_closest_parking_spot(destination_coords)
-                if spot:
-                    self.cars.append(Car(position=spot, destination=destination_name))
-                    self.occupied_spaces.add(spot)
+                if best_spot:
+                    new_car = Car(position=best_spot, destination=destination_name)
+                    new_car.time_spent = random.randint(self.min_parking_time, self.min_parking_time + 50)  # Extend parking time
+                    self.cars.append(new_car)
+                    self.occupied_spaces.add(best_spot)
 
     def update_cars(self):
-        """Update each car: increase time spent and decide if it leaves."""
+        """Update cars: increase time spent, remove leaving cars."""
         new_cars = []
         temp_occupied_spaces = set()
 
         for car in self.cars:
             car.update_time_spent()
-            if not car.should_leave():
-                new_cars.append(car)
-                temp_occupied_spaces.add(car.position)
+            if car.should_leave():
+                continue  # Remove car if it should leave
+
+            new_cars.append(car)
+            temp_occupied_spaces.add(car.position)
 
         self.cars = new_cars
         self.occupied_spaces = temp_occupied_spaces
 
     def draw_cars(self):
-        """Draw cars as images on the parking lot with the background image."""
-        self.screen.blit(self.background, (0, 0))
-        
+        """Draws all cars on the parking grid."""
+        self.screen.blit(self.background, (0, 0))  # Draw background
+
         for car in self.cars:
             car_x = car.position[0] * self.scale_factor
             car_y = car.position[1] * self.scale_factor
@@ -122,13 +132,14 @@ class GridSimulation:
         pygame.display.flip()
 
     def run(self):
-        """Run the simulation."""
+        """Runs the simulation loop."""
         running = True
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
+            self.spawn_new_cars()
             self.update_cars()
             self.draw_cars()
             self.clock.tick(self.fps)
