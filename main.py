@@ -1,5 +1,6 @@
 import pygame
 import numpy as np
+import cv2
 
 # Grid size
 GRID_SIZE = (50, 50)  # (rows, cols)
@@ -26,6 +27,7 @@ background = pygame.transform.scale(background, (WIDTH, HEIGHT))
 
 # Load the mask
 mask = np.load("./fotos/mask_corrected.npy", allow_pickle=False)
+mask = cv2.resize(mask, (GRID_SIZE[1], GRID_SIZE[0]), interpolation=cv2.INTER_NEAREST)
 
 # Initialize random state grid (0 = empty, 1 = taken, only on parking areas)
 grid = (np.random.choice([0, 1], size=GRID_SIZE) * (mask == 1)).astype(int)  # Only allow on parking areas
