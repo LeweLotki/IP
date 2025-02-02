@@ -3,8 +3,7 @@ from simulation.simulation import GridSimulation
 if __name__ == "__main__":
     sim = GridSimulation(
         background_path="./fotos/background.png",
-        prob_empty_to_taken=0.1,
-        prob_taken_to_empty=0.05,
+        scale_factor=35,  # Bigger cars (10 pixels each)
         fps=10
     )
     sim.run()
