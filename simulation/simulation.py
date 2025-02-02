@@ -134,4 +134,3 @@ class GridSimulation:
             self.clock.tick(self.fps)
 
         pygame.quit()
-
