@@ -2,51 +2,70 @@ import pygame
 import numpy as np
 
 class GridSimulation:
-    def __init__(self, grid_size=(50, 50), cell_size=10, prob_empty_to_taken=0.1, prob_taken_to_empty=0.05, fps=10, background_path="./fotos/background.png"):
+    def __init__(self, background_path="./fotos/background.png", scale_factor=15, prob_empty_to_taken=0.1, prob_taken_to_empty=0.05, fps=10):
         """
-        Initializes the simulation.
+        Initializes the simulation with resizable grid cells.
         
-        :param grid_size: Tuple (rows, cols) defining the grid size.
-        :param cell_size: Size of each cell in pixels.
+        :param background_path: Path to the background image.
+        :param scale_factor: Factor to resize the grid (higher = bigger cells, fewer grid points).
         :param prob_empty_to_taken: Probability of an empty cell (0) turning into a taken cell (1).
         :param prob_taken_to_empty: Probability of a taken cell (1) turning into an empty cell (0).
         :param fps: Frames per second (controls simulation speed).
-        :param background_path: Path to the background image.
         """
-        self.grid_size = grid_size
-        self.cell_size = cell_size
-        self.prob_empty_to_taken = prob_empty_to_taken
-        self.prob_taken_to_empty = prob_taken_to_empty
-        self.fps = fps
-        
-        # Colors
-        self.BLACK = (0, 0, 0)
-
         # Initialize pygame
         pygame.init()
-        self.width = self.grid_size[1] * self.cell_size
-        self.height = self.grid_size[0] * self.cell_size
+        
+        # Load background image
+        self.background = pygame.image.load(background_path)
+        self.width, self.height = self.background.get_size()
+        
+        # Scale factor for larger cells
+        self.scale_factor = scale_factor
+        self.grid_width = self.width // self.scale_factor
+        self.grid_height = self.height // self.scale_factor
+
+        # Create window matching image size
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Pygame Cell Simulation")
 
-        # Load background image
-        self.background = pygame.image.load(background_path)
-        self.background = pygame.transform.scale(self.background, (self.width, self.height))
+        # Set probabilities
+        self.prob_empty_to_taken = prob_empty_to_taken
+        self.prob_taken_to_empty = prob_taken_to_empty
+        self.fps = fps
 
-        # Initialize random state grid
-        self.grid = np.random.choice([0, 1], size=self.grid_size)
+        # Colors
+        self.BLACK = (0, 0, 0)
+
+        # Grid size is smaller, based on scale factor
+        self.grid_size = (self.grid_height, self.grid_width)
+        self.grid = np.zeros(self.grid_size, dtype=int)  # Initially all empty
+
+        # Select a predefined region for simulation (scaled to match new grid)
+        self.select_simulation_area()
+
         self.clock = pygame.time.Clock()
 
-    def update_grid(self):
-        """Update grid based on probabilities."""
-        new_grid = self.grid.copy()
-        
-        # Generate random probabilities for each cell
-        rand_vals = np.random.rand(*self.grid.shape)
+    def select_simulation_area(self):
+        """Selects two fixed points to define a simulation square region in the scaled grid."""
+        x1, y1 = 90 // self.scale_factor, 332 // self.scale_factor
+        x2, y2 = 418 // self.scale_factor, 587 // self.scale_factor
 
-        # Apply probability rules
-        new_grid[(self.grid == 0) & (rand_vals < self.prob_empty_to_taken)] = 1
-        new_grid[(self.grid == 1) & (rand_vals < self.prob_taken_to_empty)] = 0
+        # Ensure x1, y1 is the top-left and x2, y2 is the bottom-right
+        self.sim_x1, self.sim_x2 = min(x1, x2), max(x1, x2)
+        self.sim_y1, self.sim_y2 = min(y1, y2), max(y1, y2)
+
+    def update_grid(self):
+        """Update grid only inside the selected square region."""
+        new_grid = self.grid.copy()
+
+        # Generate random probabilities for each cell inside the selected area
+        rand_vals = np.random.rand(self.sim_y2 - self.sim_y1, self.sim_x2 - self.sim_x1)
+
+        # Apply probability rules only inside the square
+        sub_grid = new_grid[self.sim_y1:self.sim_y2, self.sim_x1:self.sim_x2]
+        sub_grid[(sub_grid == 0) & (rand_vals < self.prob_empty_to_taken)] = 1
+        sub_grid[(sub_grid == 1) & (rand_vals < self.prob_taken_to_empty)] = 0
+        new_grid[self.sim_y1:self.sim_y2, self.sim_x1:self.sim_x2] = sub_grid
 
         self.grid = new_grid
 
@@ -54,13 +73,14 @@ class GridSimulation:
         """Draw the grid on the screen with the background image."""
         # Draw background
         self.screen.blit(self.background, (0, 0))
-        
-        # Draw black squares only for taken cells (1)
-        for row in range(self.grid_size[0]):
-            for col in range(self.grid_size[1]):
-                if self.grid[row, col] == 1:  # Only draw black squares for taken cells
+
+        # Draw black squares only for taken cells (1) inside the simulation region
+        for row in range(self.sim_y1, self.sim_y2):
+            for col in range(self.sim_x1, self.sim_x2):
+                if self.grid[row, col] == 1:
                     pygame.draw.rect(self.screen, self.BLACK, 
-                                     (col * self.cell_size, row * self.cell_size, self.cell_size, self.cell_size))
+                                     (col * self.scale_factor, row * self.scale_factor, 
+                                      self.scale_factor, self.scale_factor))  # Larger cell
 
         pygame.display.flip()
 
