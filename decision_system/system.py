@@ -1,7 +1,7 @@
 import numpy as np
 
 class DecisionSystem:
-    def __init__(self, weight_destination=0.7, weight_spacing=0.3):
+    def __init__(self, weight_destination=0.01, weight_spacing=0.99):
         """
         Decision system to choose the best parking spot.
 
