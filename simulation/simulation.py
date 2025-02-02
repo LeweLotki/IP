@@ -2,11 +2,12 @@ import pygame
 import random
 import numpy as np
 from simulation.car import Car
+from decision_system.system import DecisionSystem
 
 class GridSimulation:
     def __init__(self, background_path="./fotos/background.png", car_image_path="./fotos/car.png", scale_factor=10, fps=10):
         """
-        Initializes the simulation using Car objects instead of a grid.
+        Initializes the simulation using a Decision System for parking.
         
         :param background_path: Path to the background image.
         :param car_image_path: Path to the car image.
@@ -52,6 +53,9 @@ class GridSimulation:
         self.sim_x1, self.sim_x2 = 90 // self.scale_factor, 418 // self.scale_factor
         self.sim_y1, self.sim_y2 = 332 // self.scale_factor, 587 // self.scale_factor
 
+        # **Decision system for choosing the best spot**
+        self.decision_system = DecisionSystem(weight_destination=0.7, weight_spacing=0.3)
+
         # **List of parked cars**
         self.cars = []
         self.occupied_spaces = set()  # Track occupied spaces
@@ -71,54 +75,22 @@ class GridSimulation:
 
         return pygame.transform.smoothscale(image, (new_width, new_height))
 
-    def find_closest_parking_spot(self, destination):
-        """
-        Finds the closest free parking spot to the given destination.
-        Returns None if no free spots are available.
-        """
-        min_distance = float("inf")
-        best_spot = None
-
-        for x in range(self.sim_x1, self.sim_x2):
-            for y in range(self.sim_y1, self.sim_y2):
-                if (x, y) not in self.occupied_spaces:  # Only check free spots
-                    distance = abs(x - destination[0]) + abs(y - destination[1])
-                    if distance < min_distance:
-                        min_distance = distance
-                        best_spot = (x, y)
-
-        return best_spot
+    def get_available_spots(self):
+        """Returns a list of all free parking spots."""
+        return [(x, y) for x in range(self.sim_x1, self.sim_x2)
+                        for y in range(self.sim_y1, self.sim_y2)
+                        if (x, y) not in self.occupied_spaces]
 
     def spawn_initial_cars(self):
-        """Spawn initial set of cars in the parking lot area."""
-        for destination_name, destination_coords in self.destinations.items():
-            for _ in range(4):  # Spawn a few cars per destination
-                spot = self.find_closest_parking_spot(destination_coords)
-                if spot:
-                    self.cars.append(Car(position=spot, destination=destination_name))
-                    self.occupied_spaces.add(spot)  # Mark spot as taken
-
-    def update_cars(self):
-        """Update each car: increase time spent and decide if it leaves."""
-        new_cars = []
-        self.occupied_spaces.clear()  # Reset occupied spaces
-
-        for car in self.cars:
-            car.update_time_spent()
-            if not car.should_leave():
-                new_cars.append(car)  # Keep the car
-                self.occupied_spaces.add(car.position)
-
-        # **Replace the list with remaining cars**
-        self.cars = new_cars
-
-        # **Spawn new cars if space allows**
-        while len(self.cars) < 15:  # Maintain a constant number of cars
+        """Spawn initial set of cars in the parking lot area using the Decision System."""
+        for _ in range(10):  # Generate 10 cars initially
             destination_name, destination_coords = random.choice(list(self.destinations.items()))
-            spot = self.find_closest_parking_spot(destination_coords)
-            if spot:
-                self.cars.append(Car(position=spot, destination=destination_name))
-                self.occupied_spaces.add(spot)
+            available_spots = self.get_available_spots()
+            best_spot = self.decision_system.choose_best_spot(available_spots, destination_coords, self.occupied_spaces)
+
+            if best_spot:
+                self.cars.append(Car(position=best_spot, destination=destination_name))
+                self.occupied_spaces.add(best_spot)  # Mark spot as taken
 
     def draw_cars(self):
         """Draw cars as images on the parking lot with the background image."""
@@ -135,14 +107,13 @@ class GridSimulation:
         pygame.display.flip()
 
     def run(self):
-        """Run the simulation."""
+        """Run the simulation (only spawns cars, no movement)."""
         running = True
         while running:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
 
-            self.update_cars()
             self.draw_cars()
             self.clock.tick(self.fps)  # **Control FPS**
 
