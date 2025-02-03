@@ -1,59 +1,43 @@
 import pygame
-import random
 import numpy as np
 import cv2
-from simulation.car import Car
+import sys  
+from simulation.spawner import Spawner
 from decision_system.system import DecisionSystem
 
 class GridSimulation:
-    def __init__(self, background_path="./fotos/background.png", car_image_path="./fotos/car.png", 
-                 mask_path="./fotos/mask_corrected.npy", scale_factor=10, fps=10, car_spawn_probability=0.3, max_new_cars=3, min_parking_time=100):
+    def __init__(self, background_path, car_image_path, mask_path, cell_size=20, fps=10, 
+                 car_spawn_probability=0.9, max_new_cars=10, min_parking_time=200):
         """
-        Initializes the simulation using a Decision System for parking.
-        
-        :param background_path: Path to the background image.
-        :param car_image_path: Path to the car image.
-        :param mask_path: Path to the mask file.
-        :param scale_factor: Factor to resize the grid (higher = bigger cars).
-        :param fps: Frames per second (controls simulation speed).
-        :param car_spawn_probability: Probability of new cars appearing per frame.
-        :param max_new_cars: Maximum number of cars that can arrive in a single frame.
-        :param min_parking_time: Minimum time a car stays before considering leaving.
+        Initializes the simulation with a configurable cell size.
         """
-        # Initialize pygame
         pygame.init()
-        
-        pygame.display.set_mode((1, 1))  # Small temporary display mode
 
-        # Load images
-        self.background = pygame.image.load(background_path).convert_alpha()
-        self.car_image_original = pygame.image.load(car_image_path).convert_alpha()
-
-        # Load and process mask
-        self.mask = np.load(mask_path, allow_pickle=False)
-        self.mask = cv2.resize(self.mask, (self.background.get_width() // scale_factor, self.background.get_height() // scale_factor), interpolation=cv2.INTER_NEAREST)
-
-        # Set up screen size
-        self.width, self.height = self.background.get_size()
-        self.scale_factor = scale_factor
+        # **Set up screen size FIRST**
+        self.width, self.height = pygame.image.load(background_path).get_size()
         self.screen = pygame.display.set_mode((self.width, self.height))
         pygame.display.set_caption("Pygame Car Simulation")
 
-        # Resize car image while maintaining aspect ratio
-        self.car_image = self.scale_car_image(self.car_image_original, self.scale_factor)
+        # **Now load images AFTER setting the display**
+        self.background = pygame.image.load(background_path).convert()
+        self.car_image_original = pygame.image.load(car_image_path).convert_alpha()
 
-        # Grid size in cells
-        self.grid_width = self.width // self.scale_factor
-        self.grid_height = self.height // self.scale_factor
+        # **Resize mask to match cell grid size**
+        self.cell_size = cell_size  # Defines the size of a single grid cell
+        self.grid_width = self.width // self.cell_size  # How many cells fit in width
+        self.grid_height = self.height // self.cell_size  # How many cells fit in height
+        full_mask = np.load(mask_path, allow_pickle=False)
+        self.mask = cv2.resize(full_mask, (self.grid_width, self.grid_height), interpolation=cv2.INTER_NEAREST)
 
-        # FPS and simulation parameters
+        # **Scale car image to exactly match cell size**
+        self.car_image = pygame.transform.smoothscale(self.car_image_original, (self.cell_size, self.cell_size))
+
+        # FPS settings
         self.fps = fps
         self.clock = pygame.time.Clock()
-        self.car_spawn_probability = car_spawn_probability
-        self.max_new_cars = max_new_cars
-        self.min_parking_time = min_parking_time
+        self.ticks = 0  # Track simulation ticks
 
-        # Destinations on the grid
+        # Define fixed destinations
         self.destinations = {
             "TOP": (self.grid_width // 2, 0),
             "LEFT": (0, self.grid_height // 2),
@@ -61,73 +45,23 @@ class GridSimulation:
             "RIGHT": (self.grid_width - 1, self.grid_height // 2)
         }
 
-        # Decision system
+        # Initialize Decision System and Spawner
         self.decision_system = DecisionSystem(weight_destination=0.7, weight_spacing=0.3)
+        self.spawner = Spawner(self.mask, self.destinations, self.decision_system, car_spawn_probability, max_new_cars, min_parking_time)
 
-        # Parking state
-        self.cars = []
-        self.occupied_spaces = set()
-
-    def scale_car_image(self, image, max_size):
-        """Resizes the car image while keeping its original aspect ratio."""
-        original_width, original_height = image.get_size()
-        aspect_ratio = original_width / original_height
-
-        if original_width > original_height:
-            new_width = max_size
-            new_height = int(max_size / aspect_ratio)
-        else:
-            new_height = max_size
-            new_width = int(max_size * aspect_ratio)
-
-        return pygame.transform.smoothscale(image, (new_width, new_height))
-
-    def get_available_spots(self):
-        """Returns a list of all free parking spots."""
-        return [(x, y) for x in range(self.grid_width)
-                        for y in range(self.grid_height)
-                        if (x, y) not in self.occupied_spaces and self.mask[y, x] == 1]
-
-    def spawn_new_cars(self):
-        """Attempts to spawn multiple new cars based on probability."""
-        if random.random() < self.car_spawn_probability:  # Probability check
-            num_cars = random.randint(1, self.max_new_cars)  # Random number of cars arriving
-            for _ in range(num_cars):
-                destination_name, destination_coords = random.choice(list(self.destinations.items()))
-                available_spots = self.get_available_spots()
-                best_spot = self.decision_system.choose_best_spot(available_spots, destination_coords, self.occupied_spaces)
-
-                if best_spot:
-                    new_car = Car(position=best_spot, destination=destination_name)
-                    new_car.time_spent = random.randint(self.min_parking_time, self.min_parking_time + 50)  # Extend parking time
-                    self.cars.append(new_car)
-                    self.occupied_spaces.add(best_spot)
-
-    def update_cars(self):
-        """Update cars: increase time spent, remove leaving cars."""
-        new_cars = []
-        temp_occupied_spaces = set()
-
-        for car in self.cars:
-            car.update_time_spent()
-            if car.should_leave():
-                continue  # Remove car if it should leave
-
-            new_cars.append(car)
-            temp_occupied_spaces.add(car.position)
-
-        self.cars = new_cars
-        self.occupied_spaces = temp_occupied_spaces
+        print(f"[DEBUG] Grid Size: {self.grid_width}x{self.grid_height} | Cell Size: {self.cell_size}")
+        print(f"[DEBUG] Resized Mask Shape: {self.mask.shape}")
 
     def draw_cars(self):
-        """Draws all cars on the parking grid."""
-        self.screen.blit(self.background, (0, 0))  # Draw background
+        """Draws all cars on the parking lot."""
+        self.screen.blit(self.background, (0, 0))
 
-        for car in self.cars:
-            car_x = car.position[0] * self.scale_factor
-            car_y = car.position[1] * self.scale_factor
-            car_rect = self.car_image.get_rect(center=(car_x + self.scale_factor // 2, car_y + self.scale_factor // 2))
-            self.screen.blit(self.car_image, car_rect.topleft)
+        for car in self.spawner.cars:
+            if car.position:
+                car_x = car.position[0] * self.cell_size  # Scale position correctly
+                car_y = car.position[1] * self.cell_size
+                self.screen.blit(self.car_image, (car_x, car_y))  # Draw at exact grid position
+                print(f"[DEBUG] Drawing car at screen pos: ({car_x}, {car_y})")  # Debug drawing
 
         pygame.display.flip()
 
@@ -138,10 +72,14 @@ class GridSimulation:
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     running = False
+                    pygame.quit()
+                    sys.exit()  # Properly exit the program
 
-            self.spawn_new_cars()
-            self.update_cars()
+            self.ticks += 1
+            print(f"[DEBUG] Tick: {self.ticks}")
+
+            self.spawner.spawn_new_cars()
+            self.spawner.update_cars()
             self.draw_cars()
             self.clock.tick(self.fps)
 
-        pygame.quit()
