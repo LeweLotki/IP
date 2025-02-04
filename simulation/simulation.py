@@ -14,23 +14,19 @@ class GridSimulation:
         """
         pygame.init()
 
-        # **Set up screen size FIRST**
         self.width, self.height = pygame.image.load(background_path).get_size()
-        self.screen_height = self.height + 100  # Add extra space for the UI
+        self.screen_height = self.height + 100  
         self.screen = pygame.display.set_mode((self.width, self.screen_height))
         pygame.display.set_caption("Pygame Car Simulation")
 
-        # **Now load images AFTER setting the display**
         self.background = pygame.image.load(background_path).convert()
 
-        # **Resize mask to match cell grid size**
-        self.cell_size = cell_size  # Defines the size of a single grid cell
-        self.grid_width = self.width // self.cell_size  # How many cells fit in width
-        self.grid_height = self.height // self.cell_size  # How many cells fit in height
+        self.cell_size = cell_size  
+        self.grid_width = self.width // self.cell_size  
+        self.grid_height = self.height // self.cell_size  
         full_mask = np.load(mask_path, allow_pickle=False)
         self.mask = cv2.resize(full_mask, (self.grid_width, self.grid_height), interpolation=cv2.INTER_NEAREST)
 
-        # **Car Images for Destinations**
         self.car_images = {
             "TOP": self.load_and_scale_image("./fotos/car_red.png"),
             "LEFT": self.load_and_scale_image("./fotos/car_green.png"),
@@ -38,12 +34,10 @@ class GridSimulation:
             "RIGHT": self.load_and_scale_image("./fotos/car_yellow.png")
         }
 
-        # FPS settings
         self.fps = fps
         self.clock = pygame.time.Clock()
-        self.ticks = 0  # Track simulation ticks
+        self.ticks = 0  
 
-        # Define fixed destinations
         self.destinations = {
             "TOP": (self.grid_width // 2, 0),
             "LEFT": (0, self.grid_height // 2),
@@ -51,11 +45,9 @@ class GridSimulation:
             "RIGHT": (self.grid_width - 1, self.grid_height // 2)
         }
 
-        # Initialize Decision System and Spawner
         self.decision_system = DecisionSystem(weight_destination=0.5, weight_spacing=0.5)
         self.spawner = Spawner(self.mask, self.destinations, self.decision_system, car_spawn_probability, max_new_cars, min_parking_time)
 
-        # Slider Configuration
         self.slider = self.create_slider(self.width // 2 - 150, self.height + 40)
 
         print(f"[DEBUG] Grid Size: {self.grid_width}x{self.grid_height} | Cell Size: {self.cell_size}")
@@ -74,16 +66,16 @@ class GridSimulation:
     def create_slider(self, x, y):
         """Creates a slider for adjusting weights."""
         return {
-            "rect": pygame.Rect(x, y, 300, 10),  # Slider bar
-            "knob_rect": pygame.Rect(x + 150 - 5, y - 5, 10, 20),  # Knob position
-            "value": 0.5  # Initial slider value
+            "rect": pygame.Rect(x, y, 300, 10),  
+            "knob_rect": pygame.Rect(x + 150 - 5, y - 5, 10, 20),  
+            "value": 0.5  
         }
 
     def draw_slider(self):
         """Draws the slider on the screen."""
-        pygame.draw.rect(self.screen, (255, 255, 255), (0, self.height, self.width, 100))  # White background
-        pygame.draw.rect(self.screen, (200, 200, 200), self.slider["rect"])  # Slider bar
-        pygame.draw.rect(self.screen, (0, 0, 0), self.slider["knob_rect"])  # Knob
+        pygame.draw.rect(self.screen, (255, 255, 255), (0, self.height, self.width, 100))  
+        pygame.draw.rect(self.screen, (200, 200, 200), self.slider["rect"])  
+        pygame.draw.rect(self.screen, (0, 0, 0), self.slider["knob_rect"])  
 
         font = pygame.font.SysFont(None, 24)
         spacing_weight = f"Spacing: {self.slider['value']:.2f}"
@@ -106,16 +98,15 @@ class GridSimulation:
 
         for car in self.spawner.cars:
             if car.position:
-                car_x = car.position[0] * self.cell_size  # Scale position correctly
+                car_x = car.position[0] * self.cell_size  
                 car_y = car.position[1] * self.cell_size
 
-                # Select the correct car image based on the destination
                 car_image = self.car_images.get(car.destination, None)
                 if car_image:
                     self.screen.blit(car_image, (car_x, car_y))
                     print(f"[DEBUG] Drawing {car.destination} car at ({car_x}, {car_y})")
 
-        self.draw_slider()  # Draw the slider
+        self.draw_slider()  
         pygame.display.flip()
 
     def run(self):
@@ -129,11 +120,10 @@ class GridSimulation:
                 if event.type == pygame.QUIT:
                     running = False
                     pygame.quit()
-                    sys.exit()  # Properly exit the program
+                    sys.exit()
 
             self.handle_slider(mouse_pos, mouse_pressed)
 
-            # Update decision system weights based on slider
             self.decision_system.weight_spacing = self.slider["value"]
             self.decision_system.weight_destination = 1 - self.slider["value"]
 

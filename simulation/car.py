@@ -31,8 +31,8 @@ class Car:
         
         :return: True if the car should leave, otherwise False.
         """
-        base_probability = 0.3  # Initial probability of leaving
-        decay_factor = 0.01  # The longer it stays, the lower the chance
+        base_probability = 0.3  
+        decay_factor = 0.01  
         probability_to_leave = max(0.05, base_probability - (self.time_spent * decay_factor))
         
         return random.random() < probability_to_leave
