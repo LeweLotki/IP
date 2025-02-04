@@ -3,7 +3,7 @@ from simulation.simulation import GridSimulation
 if __name__ == "__main__":
     sim = GridSimulation(
         background_path="./fotos/background2.png",
-        car_image_path="./fotos/car2.png",
+        # car_image_path="./fotos/car2.png",
         mask_path="./fotos/mask_corrected.npy",
         cell_size=30,  # Control the size of the car/grid cells
         fps=10,

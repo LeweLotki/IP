@@ -6,7 +6,7 @@ from simulation.spawner import Spawner
 from decision_system.system import DecisionSystem
 
 class GridSimulation:
-    def __init__(self, background_path, car_image_path, mask_path, cell_size=20, fps=10, 
+    def __init__(self, background_path, mask_path, cell_size=20, fps=10, 
                  car_spawn_probability=0.9, max_new_cars=10, min_parking_time=200):
         """
         Initializes the simulation with a configurable cell size.
@@ -20,7 +20,6 @@ class GridSimulation:
 
         # **Now load images AFTER setting the display**
         self.background = pygame.image.load(background_path).convert()
-        self.car_image_original = pygame.image.load(car_image_path).convert_alpha()
 
         # **Resize mask to match cell grid size**
         self.cell_size = cell_size  # Defines the size of a single grid cell
@@ -29,8 +28,13 @@ class GridSimulation:
         full_mask = np.load(mask_path, allow_pickle=False)
         self.mask = cv2.resize(full_mask, (self.grid_width, self.grid_height), interpolation=cv2.INTER_NEAREST)
 
-        # **Scale car image to exactly match cell size**
-        self.car_image = pygame.transform.smoothscale(self.car_image_original, (self.cell_size, self.cell_size))
+        # **Car Images for Destinations**
+        self.car_images = {
+            "TOP": self.load_and_scale_image("./fotos/car_red.png"),
+            "LEFT": self.load_and_scale_image("./fotos/car_green.png"),
+            "BOTTOM": self.load_and_scale_image("./fotos/car_blue.png"),
+            "RIGHT": self.load_and_scale_image("./fotos/car_yellow.png")
+        }
 
         # FPS settings
         self.fps = fps
@@ -52,6 +56,16 @@ class GridSimulation:
         print(f"[DEBUG] Grid Size: {self.grid_width}x{self.grid_height} | Cell Size: {self.cell_size}")
         print(f"[DEBUG] Resized Mask Shape: {self.mask.shape}")
 
+    def load_and_scale_image(self, image_path):
+        """
+        Loads and scales an image to the cell size.
+
+        :param image_path: Path to the image file.
+        :return: Scaled pygame.Surface.
+        """
+        image = pygame.image.load(image_path).convert_alpha()
+        return pygame.transform.smoothscale(image, (self.cell_size, self.cell_size))
+
     def draw_cars(self):
         """Draws all cars on the parking lot."""
         self.screen.blit(self.background, (0, 0))
@@ -60,8 +74,12 @@ class GridSimulation:
             if car.position:
                 car_x = car.position[0] * self.cell_size  # Scale position correctly
                 car_y = car.position[1] * self.cell_size
-                self.screen.blit(self.car_image, (car_x, car_y))  # Draw at exact grid position
-                print(f"[DEBUG] Drawing car at screen pos: ({car_x}, {car_y})")  # Debug drawing
+
+                # Select the correct car image based on the destination
+                car_image = self.car_images.get(car.destination, None)
+                if car_image:
+                    self.screen.blit(car_image, (car_x, car_y))
+                    print(f"[DEBUG] Drawing {car.destination} car at ({car_x}, {car_y})")
 
         pygame.display.flip()
 
